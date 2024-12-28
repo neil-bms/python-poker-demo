@@ -10,97 +10,132 @@ class PokerGame:
     def __init__(self, root):
         self.root = root
         self.root.title("Texas Hold'em Poker Game")
-        self.player_name = "You"
+
+        # We'll store the base name and append the EEG state in parentheses.
+        self.base_player_name = "PokerStar121"
+        self.player_name = self.base_player_name
+
         self.eeg_color = "black"
+
+        # Blinds
+        self.small_blind = 10
+        self.big_blind = 20
+
+        # Who is dealer
+        self.dealer_position = 0
+
+        # Setup UI
         self.setup_gui()
         self.start_eeg_thread()
-        self.start_game()
 
-    def setup_gui(self):
-        # Load images
-        self.load_images()
-
-        # Create canvas for the table
-        self.canvas = tk.Canvas(self.root, width=800, height=600, bg="green")
-        self.canvas.pack()
-
-        # Draw poker table
-        self.canvas.create_image(400, 300, image=self.table_img)
-
-        # Place player avatars
-        positions = [(400, 500), (100, 300), (700, 300), (400, 100)]
-        self.player_positions = positions
-        self.players = []
-        names = [self.player_name, "Computer 1", "Computer 2", "Computer 3"]
-        for i, pos in enumerate(positions):
-            avatar = self.canvas.create_image(pos[0], pos[1], image=self.player_avatar_img)
-            name_text = self.canvas.create_text(pos[0], pos[1]+40, text=names[i], fill="black", font=("Arial", 12))
-            chips_text = self.canvas.create_text(pos[0], pos[1]+55, text=f"Chips: 1000", fill="yellow", font=("Arial", 12))
-            self.players.append({
-                'avatar': avatar,
-                'name_text': name_text,
-                'chips_text': chips_text,
-                'position': pos,
-                'cards': [],
-                'card_imgs': [],
+        # We have 4 players total
+        self.num_players = 4
+        self.players_data = []
+        for _ in range(self.num_players):
+            self.players_data.append({
                 'chips': 1000,
                 'in_game': True,
                 'has_folded': False,
-                'current_bet': 0
+                'current_bet': 0,
+                'cards': [],
+                'card_imgs': []
             })
 
-        # Create card and chip holders
-        #self.card_images = {}
+        # Start first hand
+        self.start_new_hand()
+
+    def setup_gui(self):
+        self.load_images()
+
+        # Main canvas
+        self.canvas = tk.Canvas(self.root, width=800, height=600, bg="green")
+        self.canvas.pack()
+
+        # Draw table background
+        self.canvas.create_image(400, 300, image=self.table_img)
+
+        # Player seats
+        positions = [(400, 500), (100, 300), (700, 300), (400, 100)]
+        names = [self.player_name, "DarkNite12", "RavensFan08", "AAWizard17"]
+        self.players = []
+        for i, pos in enumerate(positions):
+            avatar = self.canvas.create_image(pos[0], pos[1], image=self.player_avatar_img)
+
+            name_text = self.canvas.create_text(
+                pos[0], pos[1] + 40,
+                text=names[i],
+                fill="black",
+                font=("Arial", 12)
+            )
+            nt_bbox = self.canvas.bbox(name_text)
+            name_rect = self.canvas.create_rectangle(nt_bbox, fill="white", outline="black")
+            self.canvas.tag_raise(name_text, name_rect)
+
+            chips_text = self.canvas.create_text(
+                pos[0], pos[1] + 55,
+                text="Chips: 1000",
+                fill="yellow",
+                font=("Arial", 12)
+            )
+
+            self.players.append({
+                'avatar': avatar,
+                'name_text': name_text,
+                'name_rect': name_rect,
+                'chips_text': chips_text,
+                'position': pos
+            })
+
+        # Community cards
         self.community_cards_imgs = []
-        self.chip_labels = []
+        self.community_cards = []
+
+        # Status label
+        self.status_label = tk.Label(self.root, text="", font=("Arial", 14),
+                                     bg="green", fg="white")
+        self.status_label.pack(side=tk.BOTTOM, pady=5)
 
         # Betting controls
         self.bet_amount = tk.IntVar(value=10)
         self.create_betting_controls()
 
     def load_images(self):
-        # Load table image
+        # Table
         self.table_img = ImageTk.PhotoImage(Image.open("images/poker_table.png").resize((800, 600)))
 
-        # Load player avatar image
+        # Avatar
         self.player_avatar_img = ImageTk.PhotoImage(Image.open("images/player_avatar.png").resize((50, 50)))
 
-        # Load card images
+        # Cards
         self.card_images = {}
         suits = ['hearts', 'diamonds', 'clubs', 'spades']
-        ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace']
-        missing_images = False
+        ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10',
+                 'jack', 'queen', 'king', 'ace']
+        missing = False
         for suit in suits:
             for rank in ranks:
-                card_name = f"{rank}_of_{suit}"
-                img_path = f"images/cards/{card_name}.png"
-                if os.path.exists(img_path):
-                    print(f"FOUND IT: {card_name}")
-                    img = Image.open(img_path).resize((72, 96))
-                    self.card_images[card_name] = ImageTk.PhotoImage(img)
+                cname = f"{rank}_of_{suit}"
+                path = f"images/cards/{cname}.png"
+                if os.path.exists(path):
+                    img = Image.open(path).resize((72, 96))
+                    self.card_images[cname] = ImageTk.PhotoImage(img)
                 else:
-                    print(f"Image not found: {img_path}")
-                    missing_images = True
+                    missing = True
 
-        # Load back of card image
         self.card_back_img = ImageTk.PhotoImage(Image.open("images/cards/back.png").resize((72, 96)))
 
-        if missing_images:
-            messagebox.showwarning("Warning", "Some card images are missing. Please check the console output for details.")
-        print("Keys in self.card_images:")
-        for key in self.card_images.keys():
-            print(f"'{key}'")
+        if missing:
+            messagebox.showwarning("Warning", "Some card images are missing.")
 
     def create_betting_controls(self):
-        # Betting controls frame
-        self.controls_frame = tk.Frame(self.root)
+        self.controls_frame = tk.Frame(self.root, bg="green")
         self.controls_frame.pack(pady=10)
 
-        # Bet amount scale
-        self.bet_scale = tk.Scale(self.controls_frame, from_=10, to=1000, variable=self.bet_amount, orient=tk.HORIZONTAL, label="Bet Amount")
+        self.bet_scale = tk.Scale(self.controls_frame, from_=10, to=1000,
+                                  variable=self.bet_amount,
+                                  orient=tk.HORIZONTAL, label="Bet Amount")
         self.bet_scale.pack(side=tk.LEFT, padx=10)
 
-        # Betting buttons
         self.call_button = tk.Button(self.controls_frame, text="Call", command=self.player_call)
         self.call_button.pack(side=tk.LEFT, padx=5)
 
@@ -113,120 +148,170 @@ class PokerGame:
         self.fold_button = tk.Button(self.controls_frame, text="Fold", command=self.player_fold)
         self.fold_button.pack(side=tk.LEFT, padx=5)
 
-    def start_game(self):
+    def start_new_hand(self):
+        """Reset pot, deal fresh cards, post blinds, and begin the first betting round."""
         self.deck = self.create_deck()
         self.pot = 0
         self.current_bet = 0
-        self.game_round = 'pre-flop'
+
         self.deal_cards()
+        self.post_blinds()
+
+        # Start pre-flop
+        self.game_round = 'pre-flop'
+        self.set_initial_player_turn(preflop=True)
+        self.actions_since_last_raise = 0
+
+        self.start_betting_round()
+
+    def post_blinds(self):
+        sb_idx = (self.dealer_position + 1) % self.num_players
+        bb_idx = (self.dealer_position + 2) % self.num_players
+
+        sb_amount = min(self.players_data[sb_idx]['chips'], self.small_blind)
+        self.players_data[sb_idx]['chips'] -= sb_amount
+        self.players_data[sb_idx]['current_bet'] = sb_amount
+        self.pot += sb_amount
+
+        bb_amount = min(self.players_data[bb_idx]['chips'], self.big_blind)
+        self.players_data[bb_idx]['chips'] -= bb_amount
+        self.players_data[bb_idx]['current_bet'] = bb_amount
+        self.pot += bb_amount
+
+        self.current_bet = bb_amount
+        self.update_player_chips_display(sb_idx)
+        self.update_player_chips_display(bb_idx)
+
+        self.update_pot_display()
+
+    def set_initial_player_turn(self, preflop=True):
+        if preflop:
+            # Left of the big blind
+            self.player_turn = (self.dealer_position + 3) % self.num_players
+        else:
+            # Left of the dealer
+            self.player_turn = (self.dealer_position + 1) % self.num_players
 
     def create_deck(self):
         suits = ['hearts', 'diamonds', 'clubs', 'spades']
-        ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'jack', 'queen', 'king', 'ace']
-        deck = [rank + '_of_' + suit for suit in suits for rank in ranks]
+        ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10',
+                 'jack', 'queen', 'king', 'ace']
+        deck = [f"{rank}_of_{suit}" for suit in suits for rank in ranks]
         random.shuffle(deck)
         return deck
 
     def deal_cards(self):
-        # Clear previous cards
-        for player in self.players:
-            for card in player['card_imgs']:
-                self.canvas.delete(card)
-            player['cards'] = []
-            player['card_imgs'] = []
-            player['has_folded'] = False
-            player['current_bet'] = 0
-            player['in_game'] = True
+        """Deal 2 cards each and clear old community cards / images."""
+        for cinfo in self.community_cards_imgs:
+            self.canvas.delete(cinfo['id'])
+        self.community_cards_imgs.clear()
+        self.community_cards.clear()
 
-    # Deal two cards to each player
-        for i, player in enumerate(self.players):
-            card1 = self.deck.pop()
-            card2 = self.deck.pop()
-            player['cards'] = [card1, card2]
+        for i, p_data in enumerate(self.players_data):
+            p_data['has_folded'] = False
+            p_data['current_bet'] = 0
+            p_data['cards'].clear()
+
+            # Remove old card images
+            for cimg in p_data['card_imgs']:
+                self.canvas.delete(cimg['id'])
+            p_data['card_imgs'].clear()
+
+        for i, p_data in enumerate(self.players_data):
+            if p_data['chips'] <= 0:
+                p_data['in_game'] = False
+                continue
+            else:
+                p_data['in_game'] = True
+
+            c1 = self.deck.pop()
+            c2 = self.deck.pop()
+            p_data['cards'] = [c1, c2]
+
             x_offset = -40 if i == 0 else -20
             if i == 0:
                 # Show player's own cards
-                card_image1 = self.get_card_image(card1)
-                card_image2 = self.get_card_image(card2)
-                card_img_id1 = self.canvas.create_image(player['position'][0]+x_offset, player['position'][1]-50, image=card_image1)
-                card_img_id2 = self.canvas.create_image(player['position'][0]+x_offset+30, player['position'][1]-50, image=card_image2)
-                # Store both the canvas image IDs and the PhotoImage objects
-                player['card_imgs'] = [
-                    {'id': card_img_id1, 'image': card_image1},
-                    {'id': card_img_id2, 'image': card_image2}
+                i1 = self.get_card_image(c1)
+                i2 = self.get_card_image(c2)
+                cid1 = self.canvas.create_image(
+                    self.players[i]['position'][0] + x_offset,
+                    self.players[i]['position'][1] - 50,
+                    image=i1
+                )
+                cid2 = self.canvas.create_image(
+                    self.players[i]['position'][0] + x_offset + 30,
+                    self.players[i]['position'][1] - 50,
+                    image=i2
+                )
+                p_data['card_imgs'] = [
+                    {'id': cid1, 'image': i1},
+                    {'id': cid2, 'image': i2}
                 ]
             else:
-                # Show back of card for opponents
-                card_img_id1 = self.canvas.create_image(player['position'][0]+x_offset, player['position'][1]-50, image=self.card_back_img)
-                card_img_id2 = self.canvas.create_image(player['position'][0]+x_offset+30, player['position'][1]-50, image=self.card_back_img)
-                player['card_imgs'] = [
-                    {'id': card_img_id1, 'image': self.card_back_img},
-                    {'id': card_img_id2, 'image': self.card_back_img}
+                # Opponents => back-of-card
+                cid1 = self.canvas.create_image(
+                    self.players[i]['position'][0] + x_offset,
+                    self.players[i]['position'][1] - 50,
+                    image=self.card_back_img
+                )
+                cid2 = self.canvas.create_image(
+                    self.players[i]['position'][0] + x_offset + 30,
+                    self.players[i]['position'][1] - 50,
+                    image=self.card_back_img
+                )
+                p_data['card_imgs'] = [
+                    {'id': cid1, 'image': self.card_back_img},
+                    {'id': cid2, 'image': self.card_back_img}
                 ]
-            # Update chips display
-            self.canvas.itemconfig(player['chips_text'], text=f"Chips: {player['chips']}")
 
+            self.update_player_chips_display(i)
 
-        # Clear community cards
-        self.community_cards = []
-        for img in self.community_cards_imgs:
-            self.canvas.delete(img)
-        self.community_cards_imgs = []
-
-        # Reset betting variables
-        self.pot = 0
-        self.current_bet = 0
         self.update_pot_display()
-        self.game_round = 'pre-flop'
-        self.player_turn = 0  # Index of current player's turn
-
-        # Start the betting round
-        self.start_betting_round()
 
     def get_card_image(self, card_name):
-        print(f"Looking for: '{card_name}'")
-        print(f"Current keys in self.card_images: {list(self.card_images.keys())}")
-        card_image = self.card_images.get(card_name)
-        if card_image:
-            return card_image
-        else:
-            print(f"Card image not found for '{card_name}', using back of card.")
-            return self.card_back_img
-
+        return self.card_images.get(card_name, self.card_back_img)
 
     def update_pot_display(self):
-        # Update pot display
         if hasattr(self, 'pot_text'):
             self.canvas.delete(self.pot_text)
-        self.pot_text = self.canvas.create_text(400, 250, text=f"Pot: ${self.pot}", fill="white", font=("Arial", 16))
+        if hasattr(self, 'pot_rect'):
+            self.canvas.delete(self.pot_rect)
+
+        x, y = 400, 220
+        pstr = f"Pot: ${self.pot}"
+        self.pot_text = self.canvas.create_text(x, y, text=pstr,
+                                                fill="white", font=("Arial", 16))
+        bbox = self.canvas.bbox(self.pot_text)
+        self.pot_rect = self.canvas.create_rectangle(bbox, fill="darkblue", outline="white", width=2)
+        self.canvas.tag_raise(self.pot_text, self.pot_rect)
+
+    # --------------------------------------------------------------------------
+    # Betting Rounds
+    # --------------------------------------------------------------------------
 
     def start_betting_round(self):
-        self.betting_done = False
-        self.active_players = [i for i, p in enumerate(self.players) if p['in_game'] and not p['has_folded']]
-        self.last_raised = None
-        self.last_bet = 0
-        self.player_turn = 0
+        self.active_players = [
+            i for i, p in enumerate(self.players_data)
+            if p['in_game'] and not p['has_folded'] and p['chips'] > 0
+        ]
         self.player_action()
 
     def player_action(self):
-        if self.player_turn >= len(self.players):
+        if self.player_turn >= self.num_players:
             self.player_turn = 0
 
-        player = self.players[self.player_turn]
-
-        if player['has_folded'] or not player['in_game']:
+        p_data = self.players_data[self.player_turn]
+        if (not p_data['in_game']) or p_data['has_folded'] or (p_data['chips'] <= 0):
             self.player_turn += 1
             self.player_action()
             return
 
-        if self.player_turn == 0:
-            # It's the human player's turn
+        if self.player_turn == 0:  # human
             self.enable_betting_controls()
         else:
-            # Computer player's turn
             self.disable_betting_controls()
-            self.root.after(1000, self.computer_action)
-            return
+            delay_ms = random.randint(2, 4) * 1000
+            self.root.after(delay_ms, self.computer_action_step)
 
     def enable_betting_controls(self):
         if self.current_bet == 0:
@@ -235,6 +320,7 @@ class PokerGame:
         else:
             self.call_button.config(state=tk.NORMAL)
             self.check_button.config(state=tk.DISABLED)
+
         self.raise_button.config(state=tk.NORMAL)
         self.fold_button.config(state=tk.NORMAL)
         self.bet_scale.config(state=tk.NORMAL)
@@ -246,230 +332,390 @@ class PokerGame:
         self.fold_button.config(state=tk.DISABLED)
         self.bet_scale.config(state=tk.DISABLED)
 
+    # --------------------------------------------------------------------------
+    # Player actions
+    # --------------------------------------------------------------------------
+
     def player_call(self):
-        call_amount = self.current_bet - self.players[0]['current_bet']
-        if call_amount > self.players[0]['chips']:
-            call_amount = self.players[0]['chips']
-        self.players[0]['chips'] -= call_amount
-        self.players[0]['current_bet'] += call_amount
-        self.pot += call_amount
+        pd = self.players_data[0]
+        c_amt = self.current_bet - pd['current_bet']
+        if c_amt > pd['chips']:
+            c_amt = pd['chips']
+
+        pd['chips'] -= c_amt
+        pd['current_bet'] += c_amt
+        self.pot += c_amt
+
         self.update_pot_display()
         self.update_player_chips_display(0)
         self.disable_betting_controls()
+
+        self.actions_since_last_raise += 1
         self.player_turn += 1
         self.next_action()
 
     def player_check(self):
-        if self.current_bet > 0 and self.players[0]['current_bet'] < self.current_bet:
-            messagebox.showwarning("Warning", "You cannot check, you must call, raise, or fold.")
+        pd = self.players_data[0]
+        if self.current_bet > pd['current_bet']:
+            messagebox.showwarning("Warning", "You cannot check here—you must call, raise, or fold.")
             return
+        self.status_label.config(text="You check.")
         self.disable_betting_controls()
+
+        self.actions_since_last_raise += 1
         self.player_turn += 1
         self.next_action()
 
     def player_raise(self):
-        amount = self.bet_amount.get()
-        total_bet = self.current_bet + amount
-        bet_diff = total_bet - self.players[0]['current_bet']
-        if bet_diff > self.players[0]['chips']:
-            messagebox.showwarning("Warning", "You don't have enough chips to raise that amount!")
+        pd = self.players_data[0]
+        amt = self.bet_amount.get()
+        new_total = self.current_bet + amt
+        diff = new_total - pd['current_bet']
+
+        if diff > pd['chips']:
+            messagebox.showwarning("Warning", "Not enough chips to raise!")
             return
-        self.players[0]['chips'] -= bet_diff
-        self.pot += bet_diff
-        self.players[0]['current_bet'] = total_bet
-        self.current_bet = total_bet
-        self.last_raised = self.player_turn
+
+        pd['chips'] -= diff
+        pd['current_bet'] = new_total
+        self.pot += diff
+        self.current_bet = new_total
+
         self.update_pot_display()
         self.update_player_chips_display(0)
         self.disable_betting_controls()
+
+        self.actions_since_last_raise = 0
         self.player_turn += 1
         self.next_action()
 
     def player_fold(self):
-        self.players[0]['has_folded'] = True
+        pd = self.players_data[0]
+        pd['has_folded'] = True
         self.disable_betting_controls()
+
+        self.actions_since_last_raise += 1
         self.player_turn += 1
         self.next_action()
 
-    def computer_action(self):
-        player = self.players[self.player_turn]
-        # Less aggressive AI logic for demonstration
-        call_amount = self.current_bet - player['current_bet']
-        if call_amount > player['chips']:
-            call_amount = player['chips']
+    # --------------------------------------------------------------------------
+    # Computer actions
+    # --------------------------------------------------------------------------
+
+    def computer_action_step(self):
+        pd = self.players_data[self.player_turn]
+        comp_names = ["DarkNite12", "RavensFan08", "AAWizard17"]
+        cname = comp_names[self.player_turn - 1]
+
+        call_amt = self.current_bet - pd['current_bet']
+        if call_amt > pd['chips']:
+            call_amt = pd['chips']
+
         if self.current_bet == 0:
+            # 80% check, 20% raise
             action = random.choices(['check', 'raise'], weights=[80, 20])[0]
         else:
+            # 70% call, 20% fold, 10% raise
             action = random.choices(['call', 'fold', 'raise'], weights=[70, 20, 10])[0]
 
         if action == 'call':
-            player['chips'] -= call_amount
-            player['current_bet'] += call_amount
-            self.pot += call_amount
+            pd['chips'] -= call_amt
+            pd['current_bet'] += call_amt
+            self.pot += call_amt
             self.update_player_chips_display(self.player_turn)
+            self.status_label.config(text=f"{cname} calls ${call_amt}.")
+            self.actions_since_last_raise += 1
+
         elif action == 'check':
-            pass
+            self.status_label.config(text=f"{cname} checks.")
+            self.actions_since_last_raise += 1
+
         elif action == 'raise':
-            raise_amount = min(random.randint(10, 50), player['chips'])
-            total_bet = self.current_bet + raise_amount
-            bet_diff = total_bet - player['current_bet']
-            player['chips'] -= bet_diff
-            self.pot += bet_diff
-            player['current_bet'] = total_bet
-            self.current_bet = total_bet
-            self.last_raised = self.player_turn
+            r_amt = min(random.randint(10, 50), pd['chips'])
+            new_total = self.current_bet + r_amt
+            diff = new_total - pd['current_bet']
+            pd['chips'] -= diff
+            pd['current_bet'] = new_total
+            self.pot += diff
+            self.current_bet = new_total
             self.update_player_chips_display(self.player_turn)
+            self.status_label.config(text=f"{cname} raises ${r_amt} (to ${new_total}).")
+            self.actions_since_last_raise = 0
+
         elif action == 'fold':
-            player['has_folded'] = True
+            pd['has_folded'] = True
+            self.status_label.config(text=f"{cname} folds.")
+            self.actions_since_last_raise += 1
 
         self.update_pot_display()
         self.player_turn += 1
         self.next_action()
 
-    def update_player_chips_display(self, player_index):
-        player = self.players[player_index]
-        self.canvas.itemconfig(player['chips_text'], text=f"Chips: {player['chips']}")
+    # --------------------------------------------------------------------------
+    # Round Flow
+    # --------------------------------------------------------------------------
+
+    def update_player_chips_display(self, idx):
+        self.canvas.itemconfig(
+            self.players[idx]['chips_text'],
+            text=f"Chips: {self.players_data[idx]['chips']}"
+        )
 
     def next_action(self):
-        active_players = [p for p in self.players if not p['has_folded'] and p['in_game']]
-        if len(active_players) == 1:
-            winner = active_players[0]
-            winner['chips'] += self.pot
-            self.update_player_chips_display(self.players.index(winner))
-            messagebox.showinfo("Round Over", f"{self.get_player_name(winner)} wins the pot of ${self.pot}!")
-            self.start_game()
+        active = [
+            i for i, p in enumerate(self.players_data)
+            if p['in_game'] and not p['has_folded'] and p['chips'] > 0
+        ]
+
+        # 1) If only one player remains
+        if len(active) == 1:
+            winner_idx = active[0]
+
+            # *** Approach: Reveal all, then forcibly WAIT so user can see ***
+            self.reveal_all_computers_and_pause(lambda: self.finish_single_player_win(winner_idx))
             return
 
-        all_players_have_acted = all(
-            (p['current_bet'] == self.current_bet or p['has_folded']) for p in self.players if p['in_game']
-        )
-        if all_players_have_acted and (self.last_raised is None or self.player_turn == self.last_raised):
-            # Betting round is over
+        # 2) If every active player has acted => next street or showdown
+        if self.actions_since_last_raise >= len(active):
             self.game_round_progress()
             return
 
+        # 3) Otherwise, next player's turn
         self.player_action()
 
-    def get_player_name(self, player):
-        idx = self.players.index(player)
-        return "You" if idx == 0 else f"Computer {idx}"
+    def finish_single_player_win(self, winner_idx):
+        """Award pot, show message, end the hand AFTER letting user see the flipped cards."""
+        self.players_data[winner_idx]['chips'] += self.pot
+        self.update_player_chips_display(winner_idx)
+
+        w_name = self.get_player_name(winner_idx)
+        messagebox.showinfo("Round Over", f"{w_name} wins the pot of ${self.pot}!")
+        self.status_label.config(text="")
+        self.end_of_hand()
+
+    def reveal_all_computers_and_pause(self, after_callback):
+        """
+        1) Reveal all computer hole cards immediately.
+        2) Force the GUI to update, so user actually sees the flipping.
+        3) Wait ~2 seconds, then call the provided callback (awarding pot, starting new hand, etc.)
+        """
+        self.reveal_all_computer_cards()
+        
+        # Force the canvas to redraw with new images
+        self.root.update_idletasks()
+
+        # Wait 2 seconds so the user can see the cards
+        self.root.after(2000, after_callback)
+
+    def reveal_all_computer_cards(self):
+        """
+        Reveal hole cards for every computer (indexes 1..3).
+        """
+        for i in range(1, self.num_players):
+            p_data = self.players_data[i]
+            # Remove any back-of-card images
+            for cimg in p_data['card_imgs']:
+                self.canvas.delete(cimg['id'])
+            p_data['card_imgs'].clear()
+
+            if len(p_data['cards']) < 2:
+                continue
+
+            c1, c2 = p_data['cards']
+            ci1 = self.get_card_image(c1)
+            ci2 = self.get_card_image(c2)
+
+            x_offset = -20
+            cid1 = self.canvas.create_image(
+                self.players[i]['position'][0] + x_offset,
+                self.players[i]['position'][1] - 50,
+                image=ci1
+            )
+            cid2 = self.canvas.create_image(
+                self.players[i]['position'][0] + x_offset + 30,
+                self.players[i]['position'][1] - 50,
+                image=ci2
+            )
+            p_data['card_imgs'] = [
+                {'id': cid1, 'image': ci1},
+                {'id': cid2, 'image': ci2}
+            ]
+
+    def get_player_name(self, idx):
+        if idx == 0:
+            return self.player_name
+        else:
+            names = ["PokerStar121", "DarkNite12", "RavensFan08", "AAWizard17"]
+            return names[idx]
 
     def game_round_progress(self):
-        # Reset current bets
-        for player in self.players:
-            player['current_bet'] = 0
+        # Clear everyone's current_bet
+        for p_data in self.players_data:
+            p_data['current_bet'] = 0
 
-        # Progress the game round
         if self.game_round == 'pre-flop':
             self.game_round = 'flop'
             self.deal_community_cards(3)
+            self.set_initial_player_turn(preflop=False)
+
         elif self.game_round == 'flop':
             self.game_round = 'turn'
             self.deal_community_cards(1)
+            self.set_initial_player_turn(preflop=False)
+
         elif self.game_round == 'turn':
             self.game_round = 'river'
             self.deal_community_cards(1)
+            self.set_initial_player_turn(preflop=False)
+
         elif self.game_round == 'river':
-            self.showdown()
+            # Showdown scenario => we reveal all, then pause
+            self.reveal_all_computers_and_pause(self.finish_showdown)
             return
 
-        # Reset betting variables
         self.current_bet = 0
-        self.last_raised = None
-        self.player_turn = 0
+        self.actions_since_last_raise = 0
         self.start_betting_round()
 
     def deal_community_cards(self, number):
+        """
+        Place 'number' community cards near x=270..570,
+        so that 5 total appear in a row near the center of the table.
+        """
+        base_x = 270
+        spacing = 75
         for _ in range(number):
             card = self.deck.pop()
             self.community_cards.append(card)
-            x = 250 + len(self.community_cards) * 75
-            y = 300
-            card_image = self.get_card_image(card)
-            img_id = self.canvas.create_image(x, y, image=card_image)
-            # Store both the canvas image ID and the PhotoImage object
-            self.community_cards_imgs.append({'id': img_id, 'image': card_image})
 
+            idx = len(self.community_cards) - 1
+            x = base_x + idx * spacing
+            y = 300
+
+            cimg = self.get_card_image(card)
+            cid = self.canvas.create_image(x, y, image=cimg)
+            self.community_cards_imgs.append({'id': cid, 'image': cimg})
+
+    def finish_showdown(self):
+        """Actually evaluate hands, award pot, then end the hand (after a brief pause)."""
+        active_players = [
+            i for i, p in enumerate(self.players_data)
+            if p['in_game'] and not p['has_folded'] and p['chips'] > 0
+        ]
+
+        # Evaluate best hand(s)
+        best_score = None
+        winners = []
+        for i in active_players:
+            combined = self.players_data[i]['cards'] + self.community_cards
+            score = self.evaluate_hand(combined)
+            if best_score is None or score[0] > best_score[0]:
+                best_score = score
+                winners = [i]
+            elif score[0] == best_score[0]:
+                winners.append(i)
+
+        # Split pot if tie
+        share = self.pot // len(winners)
+        for w_idx in winners:
+            self.players_data[w_idx]['chips'] += share
+            self.update_player_chips_display(w_idx)
+
+        names_str = ", ".join(self.get_player_name(idx) for idx in winners)
+        messagebox.showinfo("Showdown", f"{names_str} win(s) the pot of ${self.pot}!")
+        self.status_label.config(text="")
+
+        self.end_of_hand()
 
     def showdown(self):
-        active_players = [p for p in self.players if not p['has_folded'] and p['in_game']]
+        """(Deprecated) We'll rely on game_round_progress -> finish_showdown instead."""
+        pass
 
-        # Reveal opponents' cards
-        for player in self.players[1:]:
-            if not player['has_folded']:
-                # Remove back of card images
-                for img in player['card_imgs']:
-                    self.canvas.delete(img['id'])
-                # Display actual cards
-                x_offset = -20
-                card1, card2 = player['cards']
-                card_image1 = self.get_card_image(card1)
-                card_image2 = self.get_card_image(card2)
-                card_img_id1 = self.canvas.create_image(player['position'][0]+x_offset, player['position'][1]-50, image=card_image1)
-                card_img_id2 = self.canvas.create_image(player['position'][0]+x_offset+30, player['position'][1]-50, image=card_image2)
-                # Store both the canvas image IDs and the PhotoImage objects
-                player['card_imgs'] = [
-                    {'id': card_img_id1, 'image': card_image1},
-                    {'id': card_img_id2, 'image': card_image2}
-                ]
-
-        # Evaluate hands
-        best_hand = None
-        winners = []
-        for player in active_players:
-            hand = self.evaluate_hand(player['cards'] + self.community_cards)
-            if not best_hand or hand[0] > best_hand[0]:
-                best_hand = hand
-                winners = [player]
-            elif hand[0] == best_hand[0]:
-                winners.append(player)
-        # Split pot if tie
-        pot_share = self.pot // len(winners)
-        for winner in winners:
-            winner['chips'] += pot_share
-            self.update_player_chips_display(self.players.index(winner))
-        winner_names = ', '.join([self.get_player_name(winner) for winner in winners])
-        messagebox.showinfo("Showdown", f"{winner_names} win(s) the pot of ${self.pot}!")
-        self.start_game()
+    def end_of_hand(self):
+        self.dealer_position = (self.dealer_position + 1) % self.num_players
+        self.start_new_hand()
 
     def evaluate_hand(self, cards):
-        # Simplified hand evaluation
-        # Returns a tuple with hand strength
-        # For demonstration, we'll count the number of pairs
-        ranks = [card.split('_of_')[0] for card in cards]
+        """
+        Very basic ranking:
+          7 = four of a kind
+          6 = full house
+          3 = three of a kind
+          2 = two pairs
+          1 = one pair
+          0 = high card
+        """
+        ranks = [c.split('_of_')[0] for c in cards]
         rank_counts = {}
-        for rank in ranks:
-            rank_counts[rank] = rank_counts.get(rank, 0) + 1
+        for r in ranks:
+            rank_counts[r] = rank_counts.get(r, 0) + 1
         counts = list(rank_counts.values())
+
         if 4 in counts:
-            return (7, )  # Four of a kind
+            return (7,)
         elif 3 in counts and 2 in counts:
-            return (6, )  # Full house
+            return (6,)
         elif 3 in counts:
-            return (3, )  # Three of a kind
+            return (3,)
         elif counts.count(2) == 2:
-            return (2, )  # Two pairs
+            return (2,)
         elif 2 in counts:
-            return (1, )  # One pair
+            return (1,)
         else:
-            return (0, )  # High card
+            return (0,)
 
+    # --------------------------------------------------------------------------
+    # EEG Thread
+    # --------------------------------------------------------------------------
     def start_eeg_thread(self):
-        # Start a background thread to simulate EEG data updates
-        threading.Thread(target=self.update_eeg_data, daemon=True).start()
+        threading.Thread(target=self.simulated_eeg_reader, daemon=True).start()
 
-    def update_eeg_data(self):
-        while True:
-            # Simulate reading EEG data and updating the username color
-            eeg_value = random.randint(0, 100)
-            if eeg_value < 33:
-                self.eeg_color = "green"
-            elif eeg_value < 66:
-                self.eeg_color = "orange"
-            else:
-                self.eeg_color = "red"
-            self.canvas.itemconfig(self.players[0]['name_text'], fill=self.eeg_color)
-            time.sleep(1)  # Update every second
+    def simulated_eeg_reader(self):
+        """
+        Print EEG data to the console and update the player's (index=0) 
+        name color and label text with the detected emotional state.
+        """
+        states = [
+            ("Focused", 0.6),
+            ("Calm", 0.125),
+            ("Anxious", 0.125),
+            ("Relaxed", 0.125),
+        ]
+        s_names, weights = zip(*states)
+
+        color_map = {
+            "Focused": "red",
+            "Calm": "blue",
+            "Anxious": "orange",
+            "Relaxed": "thistle"
+        }
+
+        print("Starting random emotional state and power band generator...\n")
+        try:
+            while True:
+                st = random.choices(s_names, weights=weights, k=1)[0]
+                pband = [
+                    round(random.uniform(0.46, 0.54), 16),
+                    round(random.uniform(0.46, 0.54), 16),
+                    round(random.uniform(0.46, 0.54), 16),
+                ]
+                print("-" * 60)
+                print(f"Detected Emotional State: {st}")
+                print(f"Average power per band : {pband}")
+                print("-" * 60)
+
+                new_color = color_map.get(st, "black")
+                self.player_name = f"{self.base_player_name} ({st})"
+
+                self.canvas.itemconfig(self.players[0]['name_text'],
+                                       text=self.player_name,
+                                       fill=new_color)
+                nt_bbox = self.canvas.bbox(self.players[0]['name_text'])
+                self.canvas.coords(self.players[0]['name_rect'], nt_bbox)
+
+                time.sleep(3)
+        except KeyboardInterrupt:
+            print("\nProgram interrupted by user. Exiting...")
 
 if __name__ == "__main__":
     root = tk.Tk()
